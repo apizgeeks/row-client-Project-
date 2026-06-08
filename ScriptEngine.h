@@ -4,7 +4,7 @@
 
 #include "BaseDef.h"
 
-#define DllExport   __declspec( dllexport )
+#define DllExport  // __declspec( dllexport )
 
 class CVirtualMachine;
 typedef CVirtualMachine *	SCRIPT;
@@ -30,6 +30,42 @@ DllExport AnyData	_SE_CallScriptFunction( SCRIPT, SE_FUNC, AnyData, AnyData );
 DllExport AnyData	_SE_CallScriptFunction( SCRIPT, SE_FUNC, AnyData, AnyData, AnyData );
 DllExport AnyData	_SE_CallScriptFunction( SCRIPT, SE_FUNC, AnyData, AnyData, AnyData, AnyData );
 DllExport AnyData	_SE_CallScriptFunction( SCRIPT, SE_FUNC, AnyData args[], int nArgs );
+DllExport AnyData	_SE_CallScriptFunction( SCRIPT, SE_FUNC, 
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData,
+											AnyData ) ;
 
 ////////////////////////////////////////////////////////////////////////////////
 

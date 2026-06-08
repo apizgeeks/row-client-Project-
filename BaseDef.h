@@ -5,7 +5,7 @@
 
 #define MACHINECODEFILEEXT	".mcf"						//Machine Code File
 #define INTCODEFILEEXT		".imc"						//InterMediate Code
-#define SCRIPTFILEEXT		".gsf"						//Gama Script File
+#define SCRIPTFILEEXT		".dat"						//Gama Script File
 
 ///////////////////////////////////////////////////////////////////////////////////
 //
