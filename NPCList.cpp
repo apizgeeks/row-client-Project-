@@ -4,15 +4,20 @@
 
 #include <numeric>
 
+#include <Network/Packet/PacketStruct/UnifiedCharPacket.h>
+#include <Network/Packet/PacketStruct/ServerInfo.h>
+
 #include <ScriptEngine/ScriptEngine.h>
 #include <Creature/CreatureStructure.h>
-
-#include <item/ItemFactory.h>
-#include <item/Item.h>
-
 #include <Castle/CastleConstants.h>
 
+#include <Item/ItemFactory.h>
+#include <Item/Item.h>
+
+#include "RYLNetWorkData.h"
+#include "NPCBaseDefine.h"
 #include "NPCList.h"
+#include "GMMemory.h"
 
 CNPCList g_NPCList;
 
@@ -29,15 +34,16 @@ static void ScriptErrorMessage(const char *msg)
 }
 
 
-//-- 2004. 9. 16. Zergra From. --//
-// NPC 팝업 메뉴 중 "대화" 메뉴가 여러개 뜨는 것에 관련하여 그 갯수를 세는 함수. ShowDialog()의 페이지 인자로 사용되기때문에 1로 초기화한다.
+// NPC 팝업 메뉴 중 '대화' 메뉴가 여러개 뜨는 것에 관련하여 그 갯수를 세는 함수. ShowDialog()의 페이지 인자로 사용되기때문에 1로 초기화한다.
 unsigned long g_unDialogCount = 1;
-//-- Zergra To. --// 
 
+// NPC Display 정보 임시 저장 변수 ( NPCDisplay 함수가 가장 먼저 오기때문... )
+int g_nUID = 0;
+int g_nNationType = 0;
+bool g_bTestServer = true;
+bool g_bUnifiedServer = true;
+bool g_bRegularServer = true;
 
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #ifdef __NEWNPCSCRIPT
 	static void ContainerStart(int nContainerID)
@@ -256,12 +262,13 @@ unsigned long g_unDialogCount = 1;
 		g_NPCList.m_lpLoadPopup = NULL;
 	}
 
-	static void PopupAttribute(int nKindPopup, int nLimitLevel, int nLimitClass, int nLimitQuest)
+	static void PopupAttribute(int nKindPopup, int nLimitLevel, int nLimitFame, int nLimitClass, int nLimitQuest)
 	{
 		if(g_NPCList.m_lpLoadPopup)
 		{
 			g_NPCList.m_lpLoadPopup->m_dwPopupKind = static_cast<unsigned long>(nKindPopup);
 			g_NPCList.m_lpLoadPopup->m_dwLimitLevel = static_cast<unsigned long>(nLimitLevel);
+			g_NPCList.m_lpLoadPopup->m_dwLimitFame  = static_cast<unsigned long>(nLimitFame);
 			g_NPCList.m_lpLoadPopup->m_dwLimitClass = static_cast<unsigned long>(nLimitClass);
 			g_NPCList.m_lpLoadPopup->m_dwLimitQuest = static_cast<unsigned long>(nLimitQuest);
 		}
@@ -367,7 +374,7 @@ unsigned long g_unDialogCount = 1;
 			lpNPCNode->m_bBelongToCastle = bBelongToCastle;
 			if (bBelongToCastle && (nTownID & Castle::CASTLE_BIT))
 			{
-				lpNPCNode->m_dwTownOrNameID = ((nTownID & ~Castle::CASTLE_BIT) >> Castle::CASTLE_NAME_BIT_SHIFT);
+				lpNPCNode->m_dwTownOrNameID = ((dwTownID & ~Castle::CASTLE_BIT) >> Castle::CASTLE_NAME_BIT_SHIFT);
 			}
 			lpNPCNode->m_strNpcSkin = new char[strlen(strNpcSkin) + 1];
 			strcpy(lpNPCNode->m_strNpcSkin, strNpcSkin);
@@ -386,6 +393,16 @@ unsigned long g_unDialogCount = 1;
 			g_NPCList.AddNpc(lpNPCNode);
 
 			g_unDialogCount = 1;
+
+			if (lpNPCNode->m_dwUID == (unsigned long)g_nUID)
+			{
+				lpNPCNode->m_iDisplayNationType = g_nNationType;
+				lpNPCNode->m_bUseTestServer = g_bTestServer;
+				lpNPCNode->m_bUseUnifiedServer = g_bUnifiedServer;
+				lpNPCNode->m_bUseRegularServer = g_bRegularServer;
+
+				g_nUID = 0;
+			}
 		}
 	}
 #else
@@ -397,7 +414,7 @@ unsigned long g_unDialogCount = 1;
 		{
 			NPCNode* lpNPCNode = new NPCNode;
 			lpNPCNode->m_dwUID = (unsigned long)nUID;
-			lpNPCNode->m_dwTownOrNameID = (unsigned long)nTownID;
+			lpNPCNode->m_dwTownOrNameID = nTownID;
 			lpNPCNode->m_bBelongToCastle = bBelongToCastle;
 			if (bBelongToCastle && (nTownID & Castle::CASTLE_BIT))
 			{
@@ -420,9 +437,28 @@ unsigned long g_unDialogCount = 1;
 			g_NPCList.AddNpc(lpNPCNode);
 
 			g_unDialogCount = 1;
+
+			if (lpNPCNode->m_dwUID == (unsigned long)g_nUID)
+			{
+				lpNPCNode->m_iDisplayNationType = g_nNationType;
+				lpNPCNode->m_bUseTestServer = g_bTestServer;
+				lpNPCNode->m_bUseUnifiedServer = g_bUnifiedServer;
+				lpNPCNode->m_bUseRegularServer = g_bRegularServer;
+
+				g_nUID = 0;
+			}
 		}
 	}
 #endif
+
+static void NPCDisplay(int nUID, int nNationType, bool bTestServer, bool bRegularServer, bool bUnifiedServer)
+{
+	g_nUID = nUID;
+	g_nNationType = nNationType;
+	g_bTestServer = bTestServer;
+	g_bUnifiedServer = bUnifiedServer;
+	g_bRegularServer = bRegularServer;
+}
 
 static void SetPosition(int nUID, float fDirection, float fPosX, float fPosY, float fPosZ)
 {
@@ -489,6 +525,7 @@ static void AddDialog(int nUID, int nPage, int nFlag, const char *strNpcScript)
 				lpPopupNode->m_strPopupString	= lpJobNode->m_lpQuest->m_strQuestTitle;
 
 				lpPopupNode->m_dwLimitLevel     = static_cast<unsigned long>(lpJobNode->m_lpQuest->m_wMinLevel);
+				lpPopupNode->m_dwLimitFame     = static_cast<unsigned long>(lpJobNode->m_lpQuest->m_dwMinFame);
 				lpPopupNode->m_dwLimitClass		= lpJobNode->m_lpQuest->m_dwClass;
 				lpPopupNode->m_dwLimitQuest		= lpJobNode->m_lpQuest->m_dwCompletedQuest;
 			}
@@ -561,6 +598,7 @@ static void SetDropBase(int nUID, int nDropType, int nGradeF, int nGradeD, int n
 				LPPopupNode lpPopupNode = new PopupNode;
 				lpPopupNode->m_dwLimitClass = it->second->m_dwLimitClass;
 				lpPopupNode->m_dwLimitLevel = it->second->m_dwLimitLevel;
+				lpPopupNode->m_dwLimitFame	= it->second->m_dwLimitFame;
 				lpPopupNode->m_dwLimitQuest = it->second->m_dwLimitQuest;
 				lpPopupNode->m_dwPopupKind = it->second->m_dwPopupKind;
 				lpPopupNode->m_lpJobNode = it->second->m_lpJobNode;
@@ -589,6 +627,94 @@ static void SetDropBase(int nUID, int nDropType, int nGradeF, int nGradeD, int n
 				lpPopupNode->m_ulQuestID        = nQuestID;
 				lpPopupNode->m_usLimitLevel     = nLimitLevel;
 				lpPopupNode->m_ulLimitClass		= nLimitClass;
+				lpPopupNode->m_ulLimitFame		= 0;			// 스크립트에서 고칠게 너무많아서 -_- 아직 지원하지 않게 수정
+				lpPopupNode->m_ulLimitAbilityID	= 0;
+				lpPopupNode->m_ulLimitAbilityLV	= 0;
+				lpPopupNode->m_usLimitOther		= 0;
+			}
+
+			lpNpcNode->m_vecPopup.push_back( lpPopupNode );
+		}
+	}
+
+	static void AddPopupGuild( int nUID, int nPopupKind, int nCapacity, const char* pstrPopupString, 
+						int nQuestID, int nLimitLevel, int nLimitFame )
+	{
+		NPCNode* lpNpcNode = g_NPCList.GetNPCNode( nUID );
+
+		if( lpNpcNode )
+		{
+			LPPopupNode lpPopupNode = new PopupNode;
+
+			if( lpPopupNode )
+			{
+				lpPopupNode->m_dwPopupKind      = static_cast<unsigned long>( nPopupKind );
+				lpPopupNode->m_usCapacity       = nCapacity;
+				lpPopupNode->m_strPopupString   = pstrPopupString;
+
+				lpPopupNode->m_ulQuestID        = nQuestID;
+				lpPopupNode->m_usLimitLevel     = nLimitLevel;
+				lpPopupNode->m_ulLimitClass		= 16715775;		// 전클래스 허용
+				lpPopupNode->m_ulLimitFame		= nLimitFame;			// 스크립트에서 고칠게 너무많아서 -_- 아직 지원하지 않게 수정
+				lpPopupNode->m_ulLimitAbilityID	= 0;
+				lpPopupNode->m_ulLimitAbilityLV	= 0;
+				lpPopupNode->m_usLimitOther		= 1;
+			}
+
+			lpNpcNode->m_vecPopup.push_back( lpPopupNode );
+		}
+	}
+
+	static void AddPopupFame( int nUID, int nPopupKind, int nCapacity, const char* pstrPopupString, 
+						int nQuestID, int nLimitFame, int nLimitClass )
+	{
+		NPCNode* lpNpcNode = g_NPCList.GetNPCNode( nUID );
+
+		if( lpNpcNode )
+		{
+			LPPopupNode lpPopupNode = new PopupNode;
+
+			if( lpPopupNode )
+			{
+				lpPopupNode->m_dwPopupKind      = static_cast<unsigned long>( nPopupKind );
+				lpPopupNode->m_usCapacity       = nCapacity;
+				lpPopupNode->m_strPopupString   = pstrPopupString;
+
+				lpPopupNode->m_ulQuestID        = nQuestID;
+				lpPopupNode->m_usLimitLevel     = 0;
+				lpPopupNode->m_ulLimitClass		= nLimitClass;
+				lpPopupNode->m_ulLimitFame		= nLimitFame;			// 스크립트에서 고칠게 너무많아서 -_- 아직 지원하지 않게 수정
+				lpPopupNode->m_ulLimitAbilityID	= 0;
+				lpPopupNode->m_ulLimitAbilityLV	= 0;
+				lpPopupNode->m_usLimitOther		= 0;
+			}
+
+			lpNpcNode->m_vecPopup.push_back( lpPopupNode );
+		}
+	}
+
+	static void AddPopupAbility( int nUID, int nPopupKind, int nCapacity, const char* pstrPopupString, 
+						int nAbilityID, int nAbilityLV, int nLimitClass )
+	{
+		NPCNode* lpNpcNode = g_NPCList.GetNPCNode( nUID );
+
+		if( lpNpcNode )
+		{
+			LPPopupNode lpPopupNode = new PopupNode;
+
+			if( lpPopupNode )
+			{
+				lpPopupNode->m_dwPopupKind      = static_cast<unsigned long>( nPopupKind );
+				lpPopupNode->m_usCapacity       = nCapacity;
+				lpPopupNode->m_strPopupString   = pstrPopupString;
+
+				lpPopupNode->m_ulQuestID        = 0;
+				lpPopupNode->m_usLimitLevel     = 0;
+				lpPopupNode->m_ulLimitClass		= nLimitClass;
+				lpPopupNode->m_ulLimitFame		= 0;			// 스크립트에서 고칠게 너무많아서 -_- 아직 지원하지 않게 수정
+				lpPopupNode->m_ulLimitAbilityID	= nAbilityID;
+				lpPopupNode->m_ulLimitAbilityLV	= nAbilityLV;
+				lpPopupNode->m_usLimitOther		= 0;
 			}
 
 			lpNpcNode->m_vecPopup.push_back( lpPopupNode );
@@ -767,7 +893,7 @@ BOOL CNPCList::Load(const char *strScriptFile, unsigned long dwZone)
 
 	_SE_RegisterFunction(PopupScript, PopupStart, T_VOID, "PopupStart", T_INT, 0);
 	_SE_RegisterFunction(PopupScript, PopupEnd, T_VOID, "PopupEnd", 0);
-	_SE_RegisterFunction(PopupScript, PopupAttribute, T_VOID, "PopupAttribute", T_INT, T_INT, T_INT, T_INT, 0);
+	_SE_RegisterFunction(PopupScript, PopupAttribute, T_VOID, "PopupAttribute", T_INT, T_INT, T_INT, T_INT, T_INT, 0);
 	_SE_RegisterFunction(PopupScript, AddContainer, T_VOID, "AddContainer", T_INT, 0);
 	_SE_RegisterFunction(PopupScript, AddZoneMove, T_VOID, "AddZoneMove", T_INT, T_FLOAT, T_FLOAT, T_FLOAT, 0);
 
@@ -782,6 +908,7 @@ BOOL CNPCList::Load(const char *strScriptFile, unsigned long dwZone)
 
 	_SE_SetMessageFunction(ScriptErrorMessage);
 
+	_SE_RegisterFunction(Script, NPCDisplay, T_VOID, "NPCDisplay", T_INT, T_INT, T_BOOL, T_BOOL, T_BOOL, 0);
 	_SE_RegisterFunction(Script, SetNpc, T_VOID, "SetNPC", T_INT, T_INT, T_INT, T_BOOL, T_STRING, T_STRING, 0);
 	_SE_RegisterFunction(Script, SetPosition, T_VOID, "SetPosition", T_INT, T_FLOAT, T_FLOAT, T_FLOAT, T_FLOAT, 0);
 	_SE_RegisterFunction(Script, AddWords, T_VOID, "AddWords", T_INT, T_STRING, 0);
@@ -801,6 +928,7 @@ BOOL CNPCList::Load(const char *strScriptFile, unsigned long dwZone)
 
 	_SE_SetMessageFunction(ScriptErrorMessage);
 
+	_SE_RegisterFunction(Script, NPCDisplay, T_VOID, "NPCDisplay", T_INT, T_INT, T_BOOL, T_BOOL, T_BOOL, 0);
 	_SE_RegisterFunction(Script, SetNpc, T_VOID, "SetNPC", T_INT, T_INT, T_INT, T_BOOL, T_STRING, T_STRING, 0);
 	_SE_RegisterFunction(Script, SetPosition, T_VOID, "SetPosition", T_INT, T_FLOAT, T_FLOAT, T_FLOAT, T_FLOAT, 0);
 	_SE_RegisterFunction(Script, AddWords, T_VOID, "AddWords", T_INT, T_STRING, 0);
@@ -812,6 +940,9 @@ BOOL CNPCList::Load(const char *strScriptFile, unsigned long dwZone)
 	_SE_RegisterFunction(Script, SetDropBase, T_VOID, "SetDropBase", T_INT, T_INT, T_INT, T_INT, T_INT, T_INT, T_INT, 0);
 	_SE_RegisterFunction(Script, AddQuestWords, T_VOID, "AddQuestWords", T_INT, T_INT, T_STRING, 0);
     _SE_RegisterFunction(Script, AddPopup, T_VOID, "AddPopup", T_INT, T_INT, T_INT, T_STRING, T_INT, T_INT, T_INT, 0 );
+    _SE_RegisterFunction(Script, AddPopupGuild, T_VOID, "AddPopupGuild", T_INT, T_INT, T_INT, T_STRING, T_INT, T_INT, T_INT, 0 );
+	_SE_RegisterFunction(Script, AddPopupFame, T_VOID, "AddPopupFame", T_INT, T_INT, T_INT, T_STRING, T_INT, T_INT, T_INT, 0);
+	_SE_RegisterFunction(Script, AddPopupAbility, T_VOID, "AddPopupAbility", T_INT, T_INT, T_INT, T_STRING, T_INT, T_INT, T_INT, 0);
     _SE_RegisterFunction(Script, SetNPCAttribute, T_VOID, "SetNPCAttribute", T_INT, T_INT, T_INT, 0 );
 
 	_SE_Execute(Script);
@@ -849,6 +980,8 @@ NPCNode* CNPCList::GetNPCNode(unsigned long dwUID)
 		bMonster = TRUE;
 	}
 
+	NPCNode* lpNode = NULL;
+
 	if (TRUE == bMonster)
 	{
 		for (it = m_lstNpcNode.begin(); it != m_lstNpcNode.end(); it++)
@@ -857,7 +990,7 @@ NPCNode* CNPCList::GetNPCNode(unsigned long dwUID)
 			{
 				if (((*it)->m_dwUID & 0x0FFFFFFF) == dwUID) 
 				{
-					return (*it);
+					lpNode = *it;
 				}
 			}
 		}
@@ -868,12 +1001,68 @@ NPCNode* CNPCList::GetNPCNode(unsigned long dwUID)
 		{
 			if ((*it)->m_dwUID == dwUID) 
 			{
-				return (*it);
+				lpNode = *it;
 			}
 		}
 	}
 
-	return NULL;
+	// 해당 서버에 출현할 수 없는 NPC 처리
+	if (NULL != lpNode)
+	{
+		CRYLNetworkData* lpNetworkData = CRYLNetworkData::Instance() ;
+		if ( !lpNode->EnableDisplay( lpNetworkData->m_eInternationalCode, lpNetworkData->m_cAgentServerType, lpNetworkData->m_eServerType ) )
+		{
+			return NULL ;
+		}
+
+//		if (CRYLNetworkData::Instance()->m_cAgentServerType == UnifiedConst::ROW)
+//		{
+//			for (vector<PopupNode*>::iterator itPopup = lpNode->m_vecPopup.begin(); 
+//				itPopup != lpNode->m_vecPopup.end(); ++itPopup)
+//			{	
+//				unsigned long dwJob = (*itPopup)->m_dwPopupKind;
+//				if (POPUPMENU_TRADE == dwJob)
+//				{
+//					dwJob = (*itPopup)->m_usCapacity;
+//				}
+//
+//				switch (dwJob)
+//				{
+//					case POPUPMENU_COMPENSATION:
+//					case POPUPMENU_STATUSCLEAN:
+//					case POPUPMENU_CHANGENAME:
+//
+//					case POPUP_ADVANCEDADVENTURE:	
+//					case POPUP_ADVANCEDFIGHTER:	
+//					case POPUP_ADVANCEDROGUE:		
+//					case POPUP_ADVANCEDMAGE:	
+//					case POPUP_ADVANCEDACOLYTEE:
+//					case POPUP_ADVANCEDBEGINNER:	
+//					case POPUP_ADVANCEDCOMBATANT:	
+//					case POPUP_ADVANCEDOPPICATER:	
+//						return NULL;
+//				}
+//			}
+//		}
+	}
+
+	if (false == CRYLNetworkData::Instance()->UseContents(GameRYL::STONE_BATTLE))
+	{
+		if (NULL != lpNode)
+		{
+			for (vector<WarpNode*>::iterator itWarp = lpNode->m_lstWarpZone.begin(); 
+				itWarp != lpNode->m_lstWarpZone.end(); ++itWarp)
+			{
+				WarpNode* lpWarpNode = *itWarp;
+				if (SERVER_ID::STONE_WAR1 <= lpWarpNode->m_wZoneNumber && lpWarpNode->m_wZoneNumber <= SERVER_ID::STONE_WAR3)
+				{
+					return NULL;
+				}
+			}
+		}
+	}
+
+	return lpNode;
 }
 
 #ifdef __NEWNPCSCRIPT
@@ -1083,8 +1272,8 @@ NPCNode* CNPCList::GetNextNPCNode()
 
 				if (lpQuest->m_strQuestTitle) delete[] lpQuest->m_strQuestTitle;
 				if (lpQuest->m_strQuestDesc) delete[] lpQuest->m_strQuestDesc;
-				if (lpQuest->m_strQuestLevel) delete[] lpQuest->m_strQuestLevel;	// QUEST_TODO : Vins
-				if (lpQuest->m_strQuestAward) delete[] lpQuest->m_strQuestAward;	// QUEST_TODO : Vins
+				if (lpQuest->m_strQuestLevel) delete[] lpQuest->m_strQuestLevel;
+				if (lpQuest->m_strQuestAward) delete[] lpQuest->m_strQuestAward;
 				
 				delete lpQuest;
 			}
@@ -1169,7 +1358,7 @@ NPCNode* CNPCList::GetNextNPCNode()
 				pair< unsigned short, unsigned char> ( pItemNode->m_wKindItem, cItemGrade ) );
 
 			lpEquip = Item::CEquipment::DowncastToEquipment( lpItem );
-			lpEquip->AddRandomOption( cItemGrade, GetBaseNum(eItemType, cItemGrade) );
+			lpEquip->AddRandomOption( cItemGrade, GetBaseNum(eItemType, cItemGrade), 0);
 			lpEquip->SetNewEquip();
 			lpEquip->SetNumOrDurability( lpEquip->GetMaxNumOrDurability() );
 
@@ -1315,7 +1504,7 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 						cItemGrade = GetRandomGrade(eItemType);
 
 						pEquip = Item::CEquipment::DowncastToEquipment( lpItem );
-						pEquip->AddRandomOption( cItemGrade, GetBaseNum(eItemType, cItemGrade) );
+						pEquip->AddRandomOption( cItemGrade, GetBaseNum(eItemType, cItemGrade), 0 );
 						pEquip->SetNewEquip();
 						pEquip->SetNumOrDurability( pEquip->GetMaxNumOrDurability() );
 					}
@@ -1334,6 +1523,7 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 		Item::EquipType::Grade	cItemGrade;
 		ITEMNode* pItemNode;
 		Item::CItem*            lpItem;
+		Item::CEquipment*       lpEquip;
 
 		ClearTradeWindow();
 
@@ -1341,6 +1531,11 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 		{
 			pItemNode = (*it);
 			lpItem = Item::CItemFactory::GetInstance().CreateItem( pItemNode->m_wKindItem );
+
+			// edith 2009.08.28 ROW에서는 시즌 0 즉 RYL용 아이템이 존재하지 않는다.
+			lpEquip = Item::CEquipment::DowncastToEquipment(lpItem);
+			if(lpEquip)
+				lpEquip->SetNewEquip();
 
 			cItemGrade = Item::EquipType::Grade( 
 				GetRandomGrade(static_cast<Item::ItemType::Type>(lpItem->GetItemInfo().m_DetailData.m_cItemType)) );
@@ -1432,7 +1627,7 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 		return FALSE;
 	}
 
-	void NPCNode::SearchQuestList(unsigned long dwLevel, unsigned long dwClass, unsigned long dwNation, unsigned short *lstCompleted, unsigned short wNumCompleted, unsigned short *lstQuestList)
+	void NPCNode::SearchQuestList(unsigned long dwLevel, unsigned long dwFame, unsigned long dwClass, unsigned long dwNation, unsigned short *lstCompleted, unsigned short wNumCompleted, unsigned short *lstQuestList)
 	{
 		vector<LPPopupNode>::iterator it;
 		LPQuestJobNode lpQuestJobNode;
@@ -1458,15 +1653,32 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 				continue;	// 강제 퀘스트는 검사하지 않는다.
 			}
 
-			if ( dwLevel > lpQuestJobNode->m_lpQuest->m_wMaxLevel )
+			if(lpQuestJobNode->m_lpQuest->m_wMinLevel != 0 && lpQuestJobNode->m_lpQuest->m_wMaxLevel != 0)
 			{
-				continue;
+				if ( dwLevel > lpQuestJobNode->m_lpQuest->m_wMaxLevel )
+				{
+					continue;
+				}
+
+				if ( dwLevel + 10 <= lpQuestJobNode->m_lpQuest->m_wMinLevel )
+				{
+					continue;
+				}
 			}
 
-			if ( dwLevel + 10 <= lpQuestJobNode->m_lpQuest->m_wMinLevel )
+			if(lpQuestJobNode->m_lpQuest->m_dwMinFame != 0 && lpQuestJobNode->m_lpQuest->m_dwMaxFame != 0)
 			{
-				continue;
+				if ( dwFame > lpQuestJobNode->m_lpQuest->m_dwMaxFame )
+				{
+					continue;
+				}
+
+				if ( dwFame < lpQuestJobNode->m_lpQuest->m_dwMinFame )
+				{
+					continue;
+				}
 			}
+
 
 			// 클래스 검사
 			if (!(lpQuestJobNode->m_lpQuest->m_dwClass & (0x00000001 << (dwClass - 1)))) continue;
@@ -1534,17 +1746,82 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 				if (!bPass) continue;
 			}
 
-			if (lpQuestJobNode->m_lpQuest->m_wMinLevel <= dwLevel && dwLevel <= lpQuestJobNode->m_lpQuest->m_wMaxLevel)
+			if(lpQuestJobNode->m_lpQuest->m_wMinLevel != 0 && lpQuestJobNode->m_lpQuest->m_wMaxLevel != 0)
 			{
-				lstQuestList[count] = static_cast<unsigned short>(lpQuestJobNode->m_dwQuestID);
-				count++;
+				if (lpQuestJobNode->m_lpQuest->m_wMinLevel <= dwLevel && dwLevel <= lpQuestJobNode->m_lpQuest->m_wMaxLevel)
+				{
+					lstQuestList[count] = static_cast<unsigned short>(lpQuestJobNode->m_dwQuestID);
+					count++;
+				}
+			}
+			if(lpQuestJobNode->m_lpQuest->m_dwMinFame != 0 && lpQuestJobNode->m_lpQuest->m_dwMaxFame != 0)
+			{
+				if (lpQuestJobNode->m_lpQuest->m_dwMinFame <= dwFame && dwFame <= lpQuestJobNode->m_lpQuest->m_dwMaxFame)
+				{
+					lstQuestList[count] = static_cast<unsigned short>(lpQuestJobNode->m_dwQuestID);
+					count++;
+				}
 			}
 		}
 
 		lstQuestList[count] = 0xFFFF;
 	}
+
+	bool	NPCNode::EnableDisplay(unsigned char cNationType, unsigned char cAgentServerType, unsigned char cServerType)
+	{
+		// 표시 가능한 국가인지 체크
+		switch ( m_iDisplayNationType )
+		{
+			case 0 :	// 국내 + 해외
+				break ;
+
+			case 1 :	// 국내만 사용 가능
+			{
+				if ( GameRYL::KOREA != cNationType )
+					return false ;
+
+				break ;
+			}
+
+			case 2 :	// 해외만 사용 가능
+			{
+				if ( GameRYL::KOREA == cNationType )
+					return false ;
+
+				break ;
+			}
+
+			default :	return false ;	// 표시하지 않음
+		}
+
+		// 표시 가능한 서버군인지 체크
+		if ( m_bUseTestServer && GameRYL::SERVER_TEST == cServerType )
+		{
+			return true ;
+		}
+
+		if ( m_bUseUnifiedServer )
+		{
+			if ( UnifiedConst::Part2Unified == cAgentServerType ||
+				UnifiedConst::Part2Selectable == cAgentServerType )
+			{
+				return true ;
+			}
+		}
+
+		if ( m_bUseRegularServer )
+		{
+			if ( UnifiedConst::ROW == cAgentServerType &&
+				GameRYL::SERVER_REGULAR == cServerType )
+			{
+				return true ;
+			}
+		}
+
+		return false ;
+	}
 #else
-	void NPCNode::SearchQuestList(unsigned long dwLevel, unsigned long dwClass, unsigned long dwNation, unsigned short *lstCompleted, unsigned short wNumCompleted, unsigned short *lstQuestList)
+	void NPCNode::SearchQuestList(unsigned long dwLevel, unsigned long dwFame, unsigned long dwClass, unsigned long dwNation, unsigned short *lstCompleted, unsigned short wNumCompleted, unsigned short *lstQuestList)
 	{
 		vector<LPQuestInstanceNode>::iterator it;
 		unsigned long count = 0;
@@ -1580,7 +1857,13 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 			{
 				// 국적이 맞지 않는다.
 				continue ;
-			}
+            }
+
+            if ( (*it)->m_lpQuest->m_bInvisible )
+            {
+                // 강제 퀘스트는 검사하지 않는다.
+                continue ;
+            }
 
 			// 클래스 검사
 			if (!((*it)->m_lpQuest->m_dwClass & (0x00000001 << (dwClass - 1)))) continue;
@@ -1595,7 +1878,7 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 				}
 			}
 
-			for (t = 0; t < 10; t++)
+			for (unsigned long t = 0; t < 10; t++)
 			{
 				if (lstQuestList[t] == (*it)->m_wQuestID)
 				{
@@ -1618,23 +1901,101 @@ Item::EquipType::Grade NPCNode::GetRandomGrade(Item::ItemType::Type eItemType)
 				if (!bPass) continue;
 			}
 
-			if ( dwLevel > (*it)->m_lpQuest->m_wMaxLevel )
+			if((*it)->m_lpQuest->m_wMinLevel != 0 && (*it)->m_lpQuest->m_wMaxLevel != 0)
 			{
+				if ( dwLevel > (*it)->m_lpQuest->m_wMaxLevel )
+				{
+					continue;
+				}
+
+				if ( dwLevel + 10 <= (*it)->m_lpQuest->m_wMinLevel )
+				{
+					continue;
+				}
+
+				if ((*it)->m_lpQuest->m_wMinLevel <= dwLevel && dwLevel <= (*it)->m_lpQuest->m_wMaxLevel)
+				{
+					lstQuestList[count] = (*it)->m_wQuestID;
+					count++;
+				}
 				continue;
 			}
 
-			if ( dwLevel + 10 <= (*it)->m_lpQuest->m_wMinLevel )
+			if((*it)->m_lpQuest->m_dwMinFame != 0 && (*it)->m_lpQuest->m_dwMaxFame != 0)
 			{
-				continue;
-			}
+				if ( dwFame > (*it)->m_lpQuest->m_dwMaxFame )
+				{
+					continue;
+				}
 
-			if ((*it)->m_lpQuest->m_wMinLevel <= dwLevel && dwLevel <= (*it)->m_lpQuest->m_wMaxLevel)
-			{
-				lstQuestList[count] = (*it)->m_wQuestID;
-				count++;
+				if ( dwFame < (*it)->m_lpQuest->m_dwMinFame )
+				{
+					continue;
+				}
+
+				if ((*it)->m_lpQuest->m_dwMinFame <= dwFame && dwFame <= (*it)->m_lpQuest->m_dwMaxFame)
+				{
+					lstQuestList[count] = (*it)->m_wQuestID;
+					count++;
+				}
+				continue;
 			}
 		}
 
 		lstQuestList[count] = 0xFFFF;
+	}
+
+	bool	NPCNode::EnableDisplay(unsigned char cNationType, unsigned char cAgentServerType, unsigned char cServerType)
+	{
+		// 표시 가능한 국가인지 체크
+		switch ( m_iDisplayNationType )
+		{
+			case 0 :	// 국내 + 해외
+				break ;
+
+			case 1 :	// 국내만 사용 가능
+			{
+				if ( GameRYL::KOREA != cNationType )
+					return false ;
+
+				break ;
+			}
+
+			case 2 :	// 해외만 사용 가능
+			{
+				if ( GameRYL::KOREA == cNationType )
+					return false ;
+
+				break ;
+			}
+
+			default :	return false ;	// 표시하지 않음
+		}
+
+		// 표시 가능한 서버군인지 체크
+		if ( m_bUseTestServer && GameRYL::SERVER_TEST == cServerType )
+		{
+			return true ;
+		}
+
+		if ( m_bUseUnifiedServer )
+		{
+			if ( UnifiedConst::Part2Unified == cAgentServerType ||
+				UnifiedConst::Part2Selectable == cAgentServerType )
+			{
+				return true ;
+			}
+		}
+
+		if ( m_bUseRegularServer )
+		{
+			if ( UnifiedConst::ROW == cAgentServerType &&
+				GameRYL::SERVER_REGULAR == cServerType )
+			{
+				return true ;
+			}
+		}
+
+		return false ;
 	}
 #endif

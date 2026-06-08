@@ -101,9 +101,10 @@
 #define POPUP_SHORT_RANGE_SIEGE_ARMS	120
 #define POPUP_LONG_RANGE_SIEGE_ARMS		121
 #define POPUP_AIRSHIP					122
-/*
+
 // TODO : 추후 NPC가 3개 이상의 상점창을 갖을 수 있도록 수정한 후 종족별로 합칩니다.
 // TODO : 그 다음 단계로는 아예 팝업과 탭을 스크립트로 제어할 수 있게끔 하여 NPC 직업을 제거합시다.
+
 // 스킬 상위 트레이너
 #define POPUP_ADVANCEDADVENTURE			123
 #define POPUP_ADVANCEDFIGHTER			124
@@ -114,11 +115,11 @@
 #define POPUP_ADVANCEDCOMBATANT			129
 #define POPUP_ADVANCEDOPPICATER			130
 
-// 
+/* 
 #define POPUP_SELLINGLIST               131         // 탭 이름에 '판매목록' 하나 있는 넘
-
 #define POPUP_CHANGENAME				132			// 이름 바꾸는 NPC
 */
+
 // 임시로 뒤로 빼놓았음 (위에 번호가 NPC 스크립트에 영향을 미치기 때문에...)
 #define POPUP_WORLDWEAPON				133					//월드웨폰
 
@@ -136,6 +137,9 @@
 #define POPUPMENU_FRIEND			                7
 #define POPUPMENU_BAN				                8
 #define POPUPMENU_FOLLOW			                9
+
+#define	POPUPMENU_TACTICS							10
+#define	POPUPMENU_TACTICS_JOIN						11
 
 //-- NPC용
 #define POPUPMENU_DIALOG			                10000   // 다이얼로그 띄우는 메뉴
@@ -261,3 +265,6 @@
 #define POPUPMENU_CAMPNORIGHTMASTER					391		// 길드 요새 관련 - 권한 없음. 길드 마스터만 가능
 #define POPUPMENU_CAMPNORIGHTADMIN					392		// 길드 요새 관련 - 권한 없음. 길드 마스터 + 관리자 가능
 #define POPUPMENU_CAMPSHOPADMIN						393		// 길드 요새 상점 관리
+
+// 길드 관련 추가
+#define POPUPMENU_GUILDKICK			                399     // 길드 축출( PC용 팝업 메뉴 )

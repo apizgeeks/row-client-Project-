@@ -57,6 +57,13 @@ namespace Item
 
 typedef struct DialogNode
 {
+	enum eKind
+	{
+		KIND_GREETING		= 0,	// 채팅창에 표시될 인사말
+		KIND_DIALOG			= 1,	// 대화화기 팝업메뉴 클리식 나타날 대화
+		KIND_CHANGE_CLASS	= 2		// 전직창에 표시될 내용
+	};
+
 	unsigned short m_wKindWord;
 	unsigned short m_wDialogFlag;
 	unsigned long m_dwFlag;
@@ -188,12 +195,13 @@ typedef struct DialogNode
 		string          m_strPopupString;	// 팝업 메뉴의 이름
 
 		unsigned long	m_dwLimitLevel;		// 제한 레벨
+		unsigned long	m_dwLimitFame;		// 제한 명성
 		unsigned long	m_dwLimitClass;		// 제한 클래스
 		unsigned long	m_dwLimitQuest;		// 제한 선행 퀘스트
 
 		LPJobNode m_lpJobNode;
 
-		PopupNode(void) : m_dwPopupKind(0), m_dwLimitLevel(0), m_dwLimitClass(0), m_lpJobNode(NULL)
+		PopupNode(void) : m_dwPopupKind(0), m_dwLimitLevel(0), m_dwLimitFame(0), m_dwLimitClass(0), m_lpJobNode(NULL)
 		{
 			m_strPopupString.clear();
 		}
@@ -210,6 +218,11 @@ typedef struct DialogNode
 		unsigned int    m_unMiniMapIconID;
 		unsigned int    m_unNationality;
 		bool			m_bBelongToCastle;
+
+		int				m_iDisplayNationType;	// 0 : 모두, 1 : 국내, 2 : 해외, 0xFFFFFFFF(-1) : 표시하지 않음
+		bool			m_bUseTestServer;		// Part2 Test Server 에서 사용하는지 여부
+		bool			m_bUseUnifiedServer;	// Part2Unified 혹은 Part2Selectable 에서 사용하는지 여부
+		bool			m_bUseRegularServer;	// Part2 Regular Server 에서 사용하는지 여부
 
 		float 			m_fDirection;
 		float 			m_fPosX, m_fPosY, m_fPosZ;
@@ -238,7 +251,16 @@ typedef struct DialogNode
 		unsigned long						m_dwTime;						// 아이템 변환 시간. 이 시간에 아이템 리스트를 받아 왔음.
 //		bool								m_bInitGradeOption;				// 로컬에서 아이템 옵션을 변경한지 여부
 
-		NPCNode(void) : m_dwUID(0), m_dwTownOrNameID(0), m_unMiniMapIconID(6), m_unNationality(0), m_bBelongToCastle(false)
+		NPCNode(void)
+			: m_dwUID(0)
+			, m_dwTownOrNameID(0)
+			, m_unMiniMapIconID(6)
+			, m_unNationality(0)
+			, m_bBelongToCastle(false)
+			, m_iDisplayNationType(0)
+			, m_bUseTestServer(true)
+			, m_bUseUnifiedServer(true)
+			, m_bUseRegularServer(true)
 		{
 			// 미니맵 아이콘 디폴트 값은 Default Icon
 			// 국적 디폴트 값은 중립
@@ -277,10 +299,12 @@ typedef struct DialogNode
 		inline const char*				GetGreeting(void);
 //		inline bool						GetHasItem(unsigned char cRace);
 
+		bool	EnableDisplay(unsigned char cNationType, unsigned char cAgentServerType, unsigned char cServerType);
+
 		// 퀘스트 관련
 		BOOL IsExistQuest(void);
-		void SearchQuestList(unsigned long m_dwLevel, unsigned long m_dwClass, unsigned long dwNation, 
-			unsigned short *m_lstCompleted, unsigned short m_wNumCompleted, unsigned short *m_lstQuestList);
+		void SearchQuestList(unsigned long dwLevel, unsigned long dwFame, unsigned long dwClass, unsigned long dwNation, 
+			unsigned short *lstCompleted, unsigned short wNumCompleted, unsigned short *lstQuestList);
 	};
 
 	bool NPCNode::SetTime( unsigned long dwTime )
@@ -389,7 +413,12 @@ typedef struct DialogNode
 
 		unsigned long   m_ulQuestID;		// 선행해야 하는 퀘스트
 		unsigned short  m_usLimitLevel;		// 제한 레벨
+		unsigned long   m_ulLimitFame;		// 제한 명성
 		unsigned long	m_ulLimitClass;		// 제한 클래스
+		unsigned long	m_ulLimitAbilityID;		// 제한 어빌리티
+		unsigned long	m_ulLimitAbilityLV;		// 제한 어빌리티레벨
+		unsigned short  m_usLimitOther;		// 그외에 사용할 제한 정보 0 이면 사용안함, 1이면 길드가입여부확인
+		
 
 		PopupNode()
 		{
@@ -400,6 +429,10 @@ typedef struct DialogNode
 			m_ulQuestID     = 0;
 			m_usLimitLevel  = 0;
 			m_ulLimitClass	= 0;
+			m_ulLimitFame	= 0;
+			m_ulLimitAbilityID	= 0;
+			m_ulLimitAbilityLV	= 0;
+			m_usLimitOther	= 0;
 		}
 
 		PopupNode( const PopupNode& refNode )
@@ -421,11 +454,15 @@ typedef struct DialogNode
 	struct NPCNode
 	{
 		unsigned long 	m_dwUID;
-		unsigned long 	m_dwJob;
 		unsigned long 	m_dwTownOrNameID;		// 마을의 NPC 는 마을 ID, 성에 속한 NPC 는 성의 이름 ID
 		unsigned int    m_unMiniMapIconID;
 		unsigned int    m_unNationality;
 		bool			m_bBelongToCastle;
+
+		int				m_iDisplayNationType;	// 0 : 모두, 1 : 국내, 2 : 해외, 0xFFFFFFFF(-1) : 표시하지 않음
+		bool			m_bUseTestServer;		// Part2 Test Server 에서 사용하는지 여부
+		bool			m_bUseUnifiedServer;	// Part2Unified 혹은 Part2Selectable 에서 사용하는지 여부
+		bool			m_bUseRegularServer;	// Part2 Regular Server 에서 사용하는지 여부
 
 		float 			m_fDirection;
 		float 			m_fPosX, m_fPosY, m_fPosZ;
@@ -460,13 +497,17 @@ typedef struct DialogNode
 		NPCNode()
 		{
 			m_dwUID 			= 0;
-			m_dwJob 			= 0;
 			m_dwTownOrNameID	= 0;
 
 			m_unMiniMapIconID	= 6;	// 미니맵 아이콘 디폴트 값은 Default Icon
 			m_unNationality		= 0;    // 국적 디폴트 값은 중립
 
 			m_bBelongToCastle	= false;
+
+			m_iDisplayNationType	= 0 ;
+			m_bUseTestServer		= true ;
+			m_bUseUnifiedServer		= true ;
+			m_bUseRegularServer		= true ;
 
 			for (int i = 0; i < Item::EquipType::MAX_OPTION_TYPE; ++i)
 			{
@@ -501,9 +542,11 @@ typedef struct DialogNode
 		inline const char*				GetGreeting(void);
 		inline bool						GetHasItem(unsigned char cRace);
 
+		bool	EnableDisplay(unsigned char cNationType, unsigned char cAgentServerType, unsigned char cServerType);
+
 		// 퀘스트 관련
-		void SearchQuestList(unsigned long m_dwLevel, unsigned long m_dwClass, unsigned long dwNation, 
-			unsigned short *m_lstCompleted, unsigned short m_wNumCompleted, unsigned short *m_lstQuestList);
+		void SearchQuestList(unsigned long dwLevel, unsigned long dwFame, unsigned long dwClass, unsigned long dwNation, 
+			unsigned short *lstCompleted, unsigned short wNumCompleted, unsigned short *lstQuestList);
 	};
 
 	unsigned char NPCNode::GetBaseNum(Item::ItemType::Type eItemType, Item::EquipType::Grade eGrade) 
@@ -637,7 +680,7 @@ typedef struct DialogNode
 		vector<LPDialogNode>::iterator it;
 		for (it = m_lstScript.begin(); it != m_lstScript.end(); it++)
 		{
-			if ((*it)->m_wKindWord == 0) return (*it)->m_strWord;
+			if ((*it)->m_wKindWord == DialogNode::KIND_GREETING) return (*it)->m_strWord;
 		}
 
 		return NULL;
