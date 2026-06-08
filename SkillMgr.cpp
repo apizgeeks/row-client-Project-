@@ -5,8 +5,6 @@
 #include <Utility/Compress/MiniLZO/MiniLZOWrapper.h>
 #include <Utility/Resource/EnsureCleanup.h>
 
-#include <Utility/CheckSum/Crc32Static.h>
-
 #include <Utility/DelimitedFile.h>
 #include <Network/XORCrypt/XORCrypt.h>
 #include <Creature/Character/CharacterClass.h>
@@ -17,20 +15,19 @@
 #include <algorithm>
 
 #include "SkillMgr.h"
-#include "GMMemory.h"
 
 #define DECODE_HEADER(Start_In, Length_In, PageVer_In, PageNum_In)  CXORCrypt::GetInstance().DecodeHeader((Start_In),(Length_In),(PageVer_In),(PageNum_In))
 #define ENCODE_HEADER(Start_In, Length_In, PageVer_In, PageNum_In)  CXORCrypt::GetInstance().EncodeHeader((Start_In),(Length_In),(PageVer_In),(PageNum_In))
-#define COMPRESS(In, In_len, Out, Out_len)      CMiniLZO::Compress((In), (In_len), (Out), (Out_len))
-#define DECOMPRESS(In, In_len, Out, Out_len)    CMiniLZO::Decompress((In), (In_len), (Out), (Out_len))
+#define COMPRESS(In, In_len, Out, Out_len)      CMiniLZOCompress::Compress((In), (In_len), (Out), (Out_len))
+#define DECOMPRESS(In, In_len, Out, Out_len)    CMiniLZOCompress::Decompress((In), (In_len), (Out), (Out_len))
 
 CSkillMgr CSkillMgr::ms_this;
 
-const char* CSkillMgr::ms_szSkillScriptFileName = "./Script/Game/SkillScript.txt";
+const char* CSkillMgr::ms_szSkillScriptFileName = "SkillScript.txt";
 
 
 CSkillMgr::CSkillMgr()
-:   m_ProtoTypeArray(NULL), m_nSkillNum(0), m_dwCRC32(0)
+:   m_ProtoTypeArray(NULL)
 {
 
 }
@@ -55,9 +52,7 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
 	using namespace Skill;
 
 	// 임시변수들
-	const int	        SKILL_ID_LEN	= 32;
-	const int			HEADER_LINE_NUM	= 1;
-
+	const int	        SKILL_ID_LEN = 32;
 	char		        szBuffer[SKILL_ID_LEN];
     unsigned char       chTempValue;
 
@@ -73,14 +68,14 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
 	#define READ_DATA(ColumnName, Argument) \
 		if (false == DelimitedFile.ReadData(ColumnName, Argument)) \
         { \
-            ERRLOG2(g_Log, "스킬 스크립트 읽기 실패 : %d행 %s컬럼에서 에러 발생!", nLineCount + HEADER_LINE_NUM, #ColumnName); \
+            ERRLOG2(g_Log, "스킬 스크립트 읽기 실패 : %d행 %s컬럼에서 에러 발생!", nLineCount, #ColumnName); \
 			return false; \
 		}
 	
 	#define READ_STRING(ColumnName, Buffer, BufferSize) \
 		if (false == DelimitedFile.ReadString(ColumnName, Buffer, BufferSize)) \
         {\
-            ERRLOG2(g_Log, "스킬 스크립트 읽기 실패 : %d행 %s컬럼에서 에러 발생!", nLineCount + HEADER_LINE_NUM, #ColumnName);\
+            ERRLOG2(g_Log, "스킬 스크립트 읽기 실패 : %d행 %s컬럼에서 에러 발생!", nLineCount, #ColumnName);\
             return false;\
 		}
 
@@ -88,11 +83,11 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
         saveValue = static_cast<saveType>(ReadStringToTypeValue(DelimitedFile, szColumn, TypeArray, nMaxType));\
 		if (nMaxType == saveValue)\
         {\
-            ERRLOG2(g_Log, "스킬 스크립트 읽기 실패 : %d행 %s컬럼에서 에러 발생!", nLineCount + HEADER_LINE_NUM, #szColumn); \
+            ERRLOG2(g_Log, "스킬 스크립트 읽기 실패 : %d행 %s컬럼에서 에러 발생!", nLineCount, #szColumn); \
             return false;\
 		}
 
-	if (false == DelimitedFile.Open(szFileName ? szFileName : ms_szSkillScriptFileName, HEADER_LINE_NUM)) 
+	if (false == DelimitedFile.Open(szFileName ? szFileName : ms_szSkillScriptFileName, 1 /* HeadLine */)) 
     {
 		ERRLOG1(g_Log, "%s 파일을 열 수 없습니다.", szFileName ? szFileName : ms_szSkillScriptFileName);
 		return false;
@@ -108,7 +103,7 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
         READ_STRING("ID", szBuffer, SKILL_ID_LEN);
         tempProtoType.m_ProtoTypes[nSkillCount].m_usSkill_ID = Math::Convert::Atos(szBuffer);
 
-        READ_STRING_TO_TYPE_VALUE(Skill::Type::SkillType, tempProtoType.m_ProtoTypes[nSkillCount].m_eSkillType, 
+        READ_STRING_TO_TYPE_VALUE(Skill::Type::Type, tempProtoType.m_ProtoTypes[nSkillCount].m_eSkillType, 
             "Type", Type::SkillTypes, Type::MAX_SKILL_TYPE);
 
 		READ_DATA("ClassSkill", chTempValue); tempProtoType.m_ProtoTypes[nSkillCount].m_bIsClassSkill = chTempValue != 0;
@@ -127,12 +122,10 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
         READ_STRING_TO_TYPE_VALUE(Skill::Target::Type, tempProtoType.m_ProtoTypes[nSkillCount].m_eTargetType, 
             "Target", Target::TargetTypes, Target::MAX_TARGET_TYPE);
 
-		READ_DATA("mRange", tempProtoType.m_ProtoTypes[nSkillCount].m_fMinRange);
-		READ_DATA("Range", tempProtoType.m_ProtoTypes[nSkillCount].m_fMaxRange);
-		READ_DATA("Region", tempProtoType.m_ProtoTypes[nSkillCount].m_fEffectExtent);
+		READ_DATA("Range", tempProtoType.m_ProtoTypes[nSkillCount].m_EffectDistance);
+		READ_DATA("Region", tempProtoType.m_ProtoTypes[nSkillCount].m_EffectExtent);
 		READ_DATA("StartMP", tempProtoType.m_ProtoTypes[nSkillCount].m_StartMP);
 		READ_DATA("LevelMP", tempProtoType.m_ProtoTypes[nSkillCount].m_LevelMP);
-		READ_DATA("LockAdd", tempProtoType.m_ProtoTypes[nSkillCount].m_LockMP);
 		READ_DATA("Starttick", tempProtoType.m_ProtoTypes[nSkillCount].m_StartTick);
 		READ_DATA("LevelTick", tempProtoType.m_ProtoTypes[nSkillCount].m_LevelTick);
 		READ_STRING("CastingFlag", tempProtoType.m_ProtoTypes[nSkillCount].m_szCastingFileName, ProtoType::MAX_FILE_NAME);
@@ -149,7 +142,6 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
 		READ_DATA("EndScript", tempProtoType.m_ProtoTypes[nSkillCount].m_cEndScript);
 		READ_DATA("Protection", chTempValue); tempProtoType.m_ProtoTypes[nSkillCount].m_bProtection = chTempValue != 0;
         READ_DATA("Interrupt", chTempValue); tempProtoType.m_ProtoTypes[nSkillCount].m_bInterrupt = chTempValue != 0;
-        READ_DATA("Counter", chTempValue); tempProtoType.m_ProtoTypes[nSkillCount].m_bCounter = chTempValue != 0;
 		READ_DATA("Gauge", chTempValue); tempProtoType.m_ProtoTypes[nSkillCount].m_bGauge = chTempValue != 0;
 
 		READ_STRING("Parent", szBuffer, SKILL_ID_LEN);
@@ -167,6 +159,7 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
 			return false;
 		}
 
+        tempProtoType.m_ProtoTypes[nSkillCount].m_cSpell_LockCount = nSkillCount;
 		++nSkillCount;
         
 		if (MAX_SKILL_LOCKCOUNT == nSkillCount || tempProtoType.m_ProtoTypes[0].m_bIsClassSkill) 
@@ -210,14 +203,6 @@ bool CSkillMgr::LoadSkillsFromFile(const char* szFileName)
 		return false;
 	}
 
-    // 스킬 체크섬을 빌드하겠소.
-    if(NO_ERROR != CCrc32Static::BufferCrc32(reinterpret_cast<const char*>(m_ProtoTypeArray),
-        sizeof(ProtoTypeArray) * m_nSkillNum, m_dwCRC32))
-    {
-        ERRLOG0(g_Log, "스킬 스크립트 체크섬 빌드에 실패했습니다.");
-        return false;
-    }
-
 	return true;
 }
 
@@ -230,9 +215,9 @@ bool CSkillMgr::LoadSkillsFromBinary(const char* szFileNameBinary)
 
 	CEnsureCloseHandle hfile(hFile);
 
-	unsigned long dwRead            = 0;
-	unsigned long dwFileHighSize    = 0;
-	unsigned long dwFileSize        = GetFileSize(hFile, &dwFileHighSize);
+	DWORD dwRead            = 0;
+	DWORD dwFileHighSize    = 0;
+	DWORD dwFileSize        = GetFileSize(hFile, &dwFileHighSize);
 
 	char* lpAllocated = new char[dwFileSize];
 	CEnsureDeleteArray<char> allocated(lpAllocated);
@@ -249,8 +234,8 @@ bool CSkillMgr::LoadSkillsFromBinary(const char* szFileNameBinary)
 		return false;
 	}
 
-	unsigned long dwHeaderSize          = sizeof(unsigned long) + *reinterpret_cast<unsigned long*>(lpAllocated) + sizeof(unsigned long);
-	unsigned long dwDecompressedSize    = *reinterpret_cast<unsigned long*>(lpAllocated + dwHeaderSize - sizeof(unsigned long));
+	DWORD dwHeaderSize          = sizeof(DWORD) + *reinterpret_cast<DWORD*>(lpAllocated) + sizeof(DWORD);
+	DWORD dwDecompressedSize    = *reinterpret_cast<DWORD*>(lpAllocated + dwHeaderSize - sizeof(DWORD));
 
 	ClearProtoType();
 
@@ -265,17 +250,8 @@ bool CSkillMgr::LoadSkillsFromBinary(const char* szFileNameBinary)
 	DECOMPRESS(lpAllocated + dwHeaderSize, dwFileSize - dwHeaderSize, 
 		reinterpret_cast<char*>(m_ProtoTypeArray), &dwDecompressedSize);
 
-	DECODE_HEADER(reinterpret_cast<char*>(m_ProtoTypeArray), dwDecompressedSize, 3, 3);	
-
-    // 스킬 체크섬을 빌드하겠소.
-    if(NO_ERROR != CCrc32Static::BufferCrc32(reinterpret_cast<const char*>(m_ProtoTypeArray),
-        sizeof(ProtoTypeArray) * m_nSkillNum, m_dwCRC32))
-    {
-        ERRLOG0(g_Log, "스킬 스크립트 체크섬 빌드에 실패했습니다.");
-        return false;
-    }
-
-    return true;
+	DECODE_HEADER(reinterpret_cast<char*>(m_ProtoTypeArray), dwDecompressedSize, 0, 1);	
+	return true;
 }
 
 bool CSkillMgr::SaveSkillsToBinary(const char* szFileNameBinary, const char* szTrashFile)
@@ -287,8 +263,8 @@ bool CSkillMgr::SaveSkillsToBinary(const char* szFileNameBinary, const char* szT
 
 	CEnsureCloseHandle file(hFile);
 
-	unsigned long   dwSkillSize     = static_cast<unsigned long>(sizeof(ProtoTypeArray) * m_nSkillNum);
-	unsigned long   dwCompressSize  = dwSkillSize;
+	DWORD   dwSkillSize     = static_cast<DWORD>(sizeof(ProtoTypeArray) * m_nSkillNum);
+	DWORD   dwCompressSize  = dwSkillSize;
 
 	char*   lpSkill_Info        = new char[dwSkillSize];
 	char*   lpCompressedInfo    = new char[dwSkillSize];
@@ -303,26 +279,22 @@ bool CSkillMgr::SaveSkillsToBinary(const char* szFileNameBinary, const char* szT
 	CEnsureDeleteArray<char> compress_info(lpCompressedInfo);
 
 	memcpy(lpSkill_Info, m_ProtoTypeArray, dwSkillSize);
-	ENCODE_HEADER(lpSkill_Info, dwSkillSize, 3, 3);
+	ENCODE_HEADER(lpSkill_Info, dwSkillSize, 0, 1);
 	COMPRESS(lpSkill_Info, dwSkillSize, lpCompressedInfo, &dwCompressSize);
 
-	unsigned long dwWritten = 0;
+	DWORD dwWritten = 0;
 
 	// 쓰레기(더미) 자료
 	HANDLE hTrashFile = CreateFile(szTrashFile, GENERIC_READ, FILE_SHARE_READ, NULL, 
 		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-	if (hTrashFile == INVALID_HANDLE_VALUE) 
-	{ 
-		ERRLOG1(g_Log, "%s 파일을 열 수 없습니다.", szTrashFile);
-		return false; 
-	} 
+	if (hTrashFile == INVALID_HANDLE_VALUE) { return false; } 
 
 	CEnsureCloseHandle trashFile(hTrashFile);
 
-	unsigned long dwRead            = 0;
-	unsigned long dwFileHighSize    = 0;
-	unsigned long dwFileSize        = GetFileSize(hTrashFile, &dwFileHighSize);
+	DWORD dwRead            = 0;
+	DWORD dwFileHighSize    = 0;
+	DWORD dwFileSize        = GetFileSize(hTrashFile, &dwFileHighSize);
 
 	char* lpAllocated = new char[dwFileSize];
 	CEnsureDeleteArray<char> allocated(lpAllocated);
@@ -333,11 +305,11 @@ bool CSkillMgr::SaveSkillsToBinary(const char* szFileNameBinary, const char* szT
 		return false;
 	}
 
-	WriteFile(hFile, &dwFileSize, sizeof(unsigned long), &dwWritten, 0);
+	WriteFile(hFile, &dwFileSize, sizeof(DWORD), &dwWritten, 0);
 	WriteFile(hFile, lpAllocated, dwFileSize, &dwWritten, 0);
 
 	// 올바른 자료
-	WriteFile(hFile, &dwSkillSize, sizeof(unsigned long), &dwWritten, 0);       // 원본 데이터 크기
+	WriteFile(hFile, &dwSkillSize, sizeof(DWORD), &dwWritten, 0);       // 원본 데이터 크기
 	WriteFile(hFile, lpCompressedInfo, dwCompressSize, &dwWritten, 0);  // 압축된 데이터 크기
 	return true;
 }
@@ -486,17 +458,3 @@ bool CSkillMgr::CheckParentChildRule(void)
 	return true;
 }
 
-bool CSkillMgr::CheckData()
-{
-    unsigned long dwCheckSum = 0;
-
-    // 스킬 체크섬을 빌드하겠소.
-    if(NO_ERROR != CCrc32Static::BufferCrc32(reinterpret_cast<const char*>(m_ProtoTypeArray),
-        sizeof(ProtoTypeArray) * m_nSkillNum, dwCheckSum))
-    {
-        ERRLOG0(g_Log, "스킬 스크립트 체크섬 빌드에 실패했습니다.");
-        return false;
-    }
-
-    return (m_dwCRC32 == dwCheckSum);
-}
