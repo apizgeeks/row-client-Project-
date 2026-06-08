@@ -1,14 +1,28 @@
-# makefile for Lua distribution (includes)
+# makefile for Lua interpreter
 
-LUA= ..
+LUA= ../..
 
 include $(LUA)/config
 
-SRCS= lua.h lualib.h lauxlib.h
+EXTRA_DEFS= $(USERCONF)
+OBJS= lua.o
+SRCS= lua.c
 
-all:
+T= $(BIN)/lua
+
+all:	$T
+
+$T:	$(OBJS) $(LIB)/liblua.a $(LIB)/liblualib.a
+	$(CC) -o $@ $(MYLDFLAGS) $(OBJS) -L$(LIB) -llua -llualib $(EXTRA_LIBS) $(DLLIB)
+
+$(LIB)/liblua.a:
+	cd ..; $(MAKE)
+
+$(LIB)/liblualib.a:
+	cd ../lib; $(MAKE)
 
 clean:
+	rm -f $(OBJS) $T
 
 co:
 	co -q -f -M $(SRCS)
